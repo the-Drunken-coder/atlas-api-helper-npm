@@ -46,13 +46,14 @@ jobs:
 
           NEW_VERSION="$(node -p "require('./package/package.json').version")"
 
-          # Find the last 2 commits that touched the version file so README/CHANGELOG commits don't confuse us.
-          mapfile -t COMMITS < <(git log -n 2 --pretty=%H -- package/package.json)
-          CUR_COMMIT="${COMMITS[0]:-}"
-          PREV_COMMIT="${COMMITS[1]:-}"
-
+          CUR_COMMIT="$(git rev-parse HEAD)"
+          PREV_COMMIT=""
           OLD_VERSION=""
-          if [ -n "${PREV_COMMIT}" ]; then
+
+          # Compare to the immediate parent commit so rerunning the workflow on a docs-only commit
+          # does not re-publish or duplicate changelog sections.
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            PREV_COMMIT="$(git rev-parse HEAD^)"
             OLD_VERSION="$(git show "${PREV_COMMIT}:package/package.json" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(j.version)")"
           fi
 
@@ -111,10 +112,7 @@ jobs:
           model = os.environ.get("OPENROUTER_MODEL") or "moonshotai/kimi-k2.5"
 
           # Summarize the delta between the last two commits that touched package/package.json.
-          if prev_commit:
-            log_range = f"{prev_commit}..{cur_commit}"
-          else:
-            log_range = cur_commit or "HEAD"
+          log_range = f"{prev_commit}..{cur_commit}" if prev_commit else (cur_commit or "HEAD")
 
           changed_files = sh("git", "diff", "--name-status", log_range, "--", "package")
           commits = sh("git", "log", "--pretty=%s", log_range, "--", "package")
@@ -182,6 +180,10 @@ jobs:
               existing = f.read()
           except FileNotFoundError:
             existing = "# Changelog\n\n"
+
+          # Idempotency: if the version heading already exists, don't insert again.
+          if f"## [{new_version}] -" in existing:
+            sys.exit(0)
 
           lines = existing.splitlines(True)
           insert_at = 0
@@ -257,4 +259,3 @@ jobs:
           fi
 
           npm publish --access public
-
