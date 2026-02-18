@@ -24,14 +24,38 @@ export interface TelemetryComponent {
 }
 
 /**
- * GeoJSON geometry for geoentities.
+ * Geometry for geofeature entities.
+ *
+ * Primary (ATLAS) shape:
+ * - `type` is one of `point|circle|polygon|line` with shape-specific fields.
+ *
+ * Back-compat:
+ * - GeoJSON-like shapes (`Point|LineString|Polygon` + `coordinates`) are also accepted.
  */
-export interface GeometryComponent {
-  /** GeoJSON geometry type */
-  type: "Point" | "LineString" | "Polygon";
-  /** GeoJSON coordinates ([lon, lat] for Point) */
-  coordinates: number[] | number[][] | number[][][];
-}
+export type GeometryComponent =
+  | {
+      type?: "point";
+      point_lat: number;
+      point_lng: number;
+    }
+  | {
+      type?: "circle";
+      point_lat: number;
+      point_lng: number;
+      radius_m: number;
+    }
+  | {
+      type?: "polygon";
+      polygon: number[][]; // [lat, lng] pairs
+    }
+  | {
+      type?: "line";
+      line: number[][]; // [lat, lng] pairs
+    }
+  | {
+      type: "Point" | "LineString" | "Polygon";
+      coordinates: number[] | number[][] | number[][][];
+    };
 
 /**
  * Lists supported task identifiers for an asset.
