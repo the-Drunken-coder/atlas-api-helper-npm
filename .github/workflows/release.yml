@@ -1,0 +1,260 @@
+name: Release (npm)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "package/**"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+          cache-dependency-path: package/package-lock.json
+
+      - name: Determine version range
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ ! -f package/package.json ]; then
+            echo "::error::Missing package/package.json"
+            exit 1
+          fi
+
+          NEW_VERSION="$(node -p "require('./package/package.json').version")"
+
+          # Find the last 2 commits that touched the version file so README/CHANGELOG commits don't confuse us.
+          mapfile -t COMMITS < <(git log -n 2 --pretty=%H -- package/package.json)
+          CUR_COMMIT="${COMMITS[0]:-}"
+          PREV_COMMIT="${COMMITS[1]:-}"
+
+          OLD_VERSION=""
+          if [ -n "${PREV_COMMIT}" ]; then
+            OLD_VERSION="$(git show "${PREV_COMMIT}:package/package.json" | node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(j.version)")"
+          fi
+
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "old_version=${OLD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "cur_commit=${CUR_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "prev_commit=${PREV_COMMIT}" >> "$GITHUB_OUTPUT"
+
+          if [ -n "${OLD_VERSION}" ] && [ "${NEW_VERSION}" = "${OLD_VERSION}" ]; then
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync root README from package README
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f package/README.md ]; then
+            echo "::error::Missing package/README.md"
+            exit 1
+          fi
+          cp package/README.md README.md
+
+      - name: Update CHANGELOG.md via OpenRouter
+        if: steps.versions.outputs.version_changed == 'true'
+        shell: bash
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          NEW_VERSION: ${{ steps.versions.outputs.new_version }}
+          CUR_COMMIT: ${{ steps.versions.outputs.cur_commit }}
+          PREV_COMMIT: ${{ steps.versions.outputs.prev_commit }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            echo "::error::Missing OPENROUTER_API_KEY secret"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import textwrap
+          import urllib.request
+          from datetime import datetime, timezone
+
+          def sh(*args: str) -> str:
+            return subprocess.check_output(list(args), text=True).strip()
+
+          new_version = os.environ["NEW_VERSION"]
+          cur_commit = os.environ.get("CUR_COMMIT", "")
+          prev_commit = os.environ.get("PREV_COMMIT", "")
+          model = os.environ.get("OPENROUTER_MODEL") or "moonshotai/kimi-k2.5"
+
+          # Summarize the delta between the last two commits that touched package/package.json.
+          if prev_commit:
+            log_range = f"{prev_commit}..{cur_commit}"
+          else:
+            log_range = cur_commit or "HEAD"
+
+          changed_files = sh("git", "diff", "--name-status", log_range, "--", "package")
+          commits = sh("git", "log", "--pretty=%s", log_range, "--", "package")
+
+          date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+          prompt = textwrap.dedent(f"""
+          You are updating a Keep-a-Changelog style CHANGELOG.md for an npm package.
+
+          Task:
+          - Produce ONE markdown section for version {new_version} dated {date}.
+          - Output MUST start with: "## [{new_version}] - {date}"
+          - Then include a short bullet list (3-8 bullets) summarizing user-visible changes.
+          - If changes are mostly internal/refactor, say so clearly.
+          - Do not include code blocks. Do not include links. Do not include extra commentary.
+
+          Context:
+          - This repo mirrors source code from another monorepo into the `package/` directory.
+          - File changes (name-status):
+          {changed_files}
+
+          Commit subjects affecting package/:
+          {commits}
+          """).strip()
+
+          body = {
+            "model": model,
+            "messages": [
+              {"role": "system", "content": "You write concise, accurate changelog entries."},
+              {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 400,
+          }
+
+          req = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions",
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+              "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://github.com/the-Drunken-coder/atlas-api-helper-npm",
+              "X-Title": "atlas-api-helper-npm changelog bot",
+            },
+            method="POST",
+          )
+
+          try:
+            with urllib.request.urlopen(req, timeout=90) as resp:
+              resp_body = resp.read().decode("utf-8")
+          except Exception as e:
+            print(f"::error::OpenRouter request failed: {e}", file=sys.stderr)
+            raise
+
+          data = json.loads(resp_body)
+          content = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+          if not content.startswith(f"## [{new_version}] - {date}"):
+            print("::error::LLM response did not start with expected heading.", file=sys.stderr)
+            print("LLM response:", content, file=sys.stderr)
+            sys.exit(1)
+
+          changelog_path = "CHANGELOG.md"
+          existing = ""
+          try:
+            with open(changelog_path, "r", encoding="utf-8") as f:
+              existing = f.read()
+          except FileNotFoundError:
+            existing = "# Changelog\n\n"
+
+          lines = existing.splitlines(True)
+          insert_at = 0
+          for i, line in enumerate(lines):
+            if line.strip() == "# Changelog":
+              insert_at = i + 1
+              break
+          # Insert after the first blank line following the header (or immediately after header).
+          while insert_at < len(lines) and lines[insert_at].strip() != "":
+            insert_at += 1
+          if insert_at < len(lines):
+            insert_at += 1
+
+          snippet = content.rstrip() + "\n\n"
+          new_lines = lines[:insert_at] + [snippet] + lines[insert_at:]
+
+          with open(changelog_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write("".join(new_lines))
+          PY
+
+      - name: Commit README + CHANGELOG (if changed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add README.md CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No README/CHANGELOG changes to commit."
+            exit 0
+          fi
+
+          VERSION="${{ steps.versions.outputs.new_version }}"
+          git commit -m "chore(release): update docs + changelog for v${VERSION}"
+          git push
+
+      - name: Install dependencies
+        if: steps.versions.outputs.version_changed == 'true'
+        working-directory: package
+        run: npm ci
+
+      - name: Test
+        if: steps.versions.outputs.version_changed == 'true'
+        working-directory: package
+        run: npm test
+
+      - name: Build
+        if: steps.versions.outputs.version_changed == 'true'
+        working-directory: package
+        run: npm run build
+
+      - name: Publish to npm (if not already published)
+        if: steps.versions.outputs.version_changed == 'true'
+        working-directory: package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::Missing NPM_TOKEN secret"
+            exit 1
+          fi
+
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+
+          if npm view "${PKG_NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "Already published: ${PKG_NAME}@${VERSION}"
+            exit 0
+          fi
+
+          npm publish --access public
+
