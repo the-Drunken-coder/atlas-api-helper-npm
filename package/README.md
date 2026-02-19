@@ -198,7 +198,15 @@ await client.updateTask("mission-1", {
 
 ```ts
 startTask(taskId: string): Promise<Task>
-completeTask(taskId: string): Promise<Task>
+completeTask(taskId: string, result?: JsonRecord): Promise<Task>
+transitionTaskStatus(
+  taskId: string,
+  status: string,
+  options?: {
+    validate?: boolean;  // Defaults to true
+    extra?: JsonRecord;  // Optional metadata
+  }
+): Promise<Task>
 failTask(taskId: string, errorMessage?: string, errorDetails?: JsonRecord): Promise<Task>
 ```
 
@@ -206,7 +214,13 @@ failTask(taskId: string, errorMessage?: string, errorDetails?: JsonRecord): Prom
 ```ts
 await client.startTask("mission-1");
 // ... task execution ...
-await client.completeTask("mission-1");
+await client.completeTask("mission-1", { summary: "Mission completed successfully" });
+
+// Explicitly transition to a status (optional helper for custom flows)
+await client.transitionTaskStatus("mission-2", "in_progress", {
+  validate: false,
+  extra: { note: "Manual override" },
+});
 
 // Or if the task fails:
 await client.failTask("mission-2", "Calibration failed", { code: "CAL-01" });
@@ -259,6 +273,22 @@ createObjectMetadata(
     extra?: JsonRecord;
   }
 ): Promise<StoredObject>
+```
+
+### Viewing Object Content
+
+```ts
+viewObject(objectId: string): Promise<{
+  data: string;
+  contentType?: string;
+  contentLength?: number;
+}>
+```
+
+**Example:**
+```ts
+const preview = await client.viewObject("mission-log");
+console.log(preview.data);
 ```
 
 ### Updating Object Metadata
@@ -326,7 +356,7 @@ getFullDataset(options?: {
   entityLimit?: number;
   taskLimit?: number;
   objectLimit?: number;
-}): Promise<FullDatasetResponse>
+}): Promise<JsonRecord>
 ```
 
 **Example:**
