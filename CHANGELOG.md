@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.2.19] - 2026-02-19
+
+- Internal sync from upstream ATLAS monorepo (fc2488c).
+- Updated dependencies and package lockfile.
+- Updated README documentation.
+
 ## [0.2.18] - 2026-02-18
 
 - Maintenance sync from upstream ATLAS monorepo (964e6a3).
