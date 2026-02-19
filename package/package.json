@@ -1,6 +1,6 @@
 {
   "name": "@atlasnpm/atlas-api-helper",
-  "version": "0.2.19",
+  "version": "0.2.20",
   "type": "module",
   "description": "HTTP client for the Atlas Command REST API.",
   "license": "MIT",
