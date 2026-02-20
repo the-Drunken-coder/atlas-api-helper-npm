@@ -29,10 +29,13 @@ export class AtlasHttpClient {
   constructor(options: ClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.token = options.token;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
-    if (!this.fetchImpl) {
+    const defaultFetch =
+      typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : undefined;
+    const resolvedFetch = options.fetchImpl ?? defaultFetch;
+    if (!resolvedFetch) {
       throw new Error("fetch is not available; provide fetchImpl");
     }
+    this.fetchImpl = resolvedFetch;
   }
 
   private headers(): HeadersInit {

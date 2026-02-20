@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AtlasHttpClient } from "../src/httpClient.js";
 
 type RecordedRequest = {
@@ -35,6 +35,19 @@ const createRecorder = () => {
 
   return { calls, client };
 };
+
+describe("AtlasHttpClient constructor", () => {
+  it("throws a clear error when fetch is unavailable", () => {
+    vi.stubGlobal("fetch", undefined);
+    try {
+      expect(() => new AtlasHttpClient({ baseUrl: "http://atlas.local" })).toThrow(
+        /fetch is not available/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
 
 describe("AtlasHttpClient entities helpers", () => {
   it("lists and mutates entities with correct payloads", async () => {
