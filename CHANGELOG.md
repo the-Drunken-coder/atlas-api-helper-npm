@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.2.23] - 2026-02-20
+
+- Internal: Synchronized source code from upstream ATLAS monorepo (commit d5e77a9)
+- Internal: Updated HTTP client module and test suite to match upstream changes
+- Internal: Updated package dependencies and lockfile to align with upstream versions
+
 ## [0.2.21] - 2026-02-20
 
 - Routine synchronization from upstream ATLAS monorepo (e6fa8aa)
