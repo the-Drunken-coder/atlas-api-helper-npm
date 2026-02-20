@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## [0.2.21] - 2026-02-20
+
+- Routine synchronization from upstream ATLAS monorepo (e6fa8aa)
+- Updated package manifest and lockfile metadata
+- No functional changes or user-facing fixes
+
 ## [0.2.19] - 2026-02-19
 
 - Internal sync from upstream ATLAS monorepo (fc2488c).
