@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## [0.2.24] - 2026-02-21
+
+- Synchronized source with upstream ATLAS monorepo (6ac7385).
+- Updated dependencies.
+- Internal improvements to HTTP client and test suite.
+- No user-facing API changes in this release.
+
 ## [0.2.23] - 2026-02-20
 
 - Internal: Synchronized source code from upstream ATLAS monorepo (commit d5e77a9)
