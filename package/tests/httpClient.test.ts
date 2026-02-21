@@ -192,8 +192,8 @@ describe("AtlasHttpClient task helpers", () => {
       /requires a components payload/,
     );
 
-    await client.startTask("task-1");
-    expect(calls.at(-1)?.url).toContain("/tasks/task-1/start");
+    await client.acknowledgeTask("task-1");
+    expect(calls.at(-1)?.url).toContain("/tasks/task-1/acknowledge");
     expect(calls.at(-1)?.body).toEqual({});
 
     await client.completeTask("task-1");

@@ -211,7 +211,7 @@ export class AtlasHttpClient {
       payload.status = options.status;
     }
     const params: Record<string, unknown> = {
-      status_filter: options?.status_filter ?? "pending,in_progress",
+      status_filter: options?.status_filter ?? "pending,acknowledged",
       limit: options?.limit ?? 10,
       since: options?.since,
       fields: options?.fields,
@@ -277,8 +277,12 @@ export class AtlasHttpClient {
     });
   }
 
+  acknowledgeTask(taskId: string) {
+    return this.request("POST", `/tasks/${taskId}/acknowledge`, {});
+  }
+
   startTask(taskId: string) {
-    return this.request("POST", `/tasks/${taskId}/start`, {});
+    return this.acknowledgeTask(taskId);
   }
 
   completeTask(taskId: string, result?: JsonRecord) {
