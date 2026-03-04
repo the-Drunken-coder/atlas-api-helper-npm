@@ -1,5 +1,12 @@
 ﻿# Changelog
 
+## [0.2.25] - 2026-03-04
+
+- Synchronized with ATLAS monorepo at commit `a695a60`
+- Updated Rollup bundler and platform-specific binaries from 4.53.2 to 4.59.0
+- Added prebuilt binary support for Linux loong64 (musl) and Linux ppc64 (musl) architectures
+- Refreshed package-lock.json to align with upstream dependency resolutions
+
 ## [0.2.24] - 2026-02-21
 
 - Synchronized source with upstream ATLAS monorepo (6ac7385).
