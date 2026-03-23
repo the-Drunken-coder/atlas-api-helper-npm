@@ -1,4 +1,4 @@
-export { AtlasHttpClient } from "./httpClient.js";
+export { AtlasHttpClient, ObjectPreconditionFailedError } from "./httpClient.js";
 export type {
   ClientOptions,
   FetchImplementation,
@@ -28,10 +28,19 @@ export type {
   ObjectUpdate,
   ChangedSinceOptions,
   ChangedSinceResponse,
+  DeletedResource,
+  DeletedEntityTombstone,
+  DeletedTaskTombstone,
+  DeletedObjectTombstone,
   DeletedEntity,
   DeletedTask,
   DeletedObject,
-  FullDatasetOptions
+  FullDatasetOptions,
+  FullDatasetResponse,
+  QueryStreamCursors,
+  SerializedEntity,
+  SerializedTask,
+  SerializedObject
 } from "./types/entities.js";
 export type {
   TelemetryComponent,

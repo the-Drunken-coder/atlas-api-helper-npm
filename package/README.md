@@ -203,8 +203,10 @@ transitionTaskStatus(
   taskId: string,
   status: string,
   options?: {
-    validate?: boolean;  // Defaults to true
-    extra?: JsonRecord;  // Optional metadata
+    progress?: number;
+    message?: string;
+    validate?: boolean;  // Deprecated and ignored for one release
+    extra?: JsonRecord;  // Deprecated and ignored for one release
   }
 ): Promise<Task>
 failTask(taskId: string, errorMessage?: string, errorDetails?: JsonRecord): Promise<Task>
@@ -216,10 +218,10 @@ await client.startTask("mission-1");
 // ... task execution ...
 await client.completeTask("mission-1", { summary: "Mission completed successfully" });
 
-// Explicitly transition to a status (optional helper for custom flows)
+// Explicitly transition to a status
 await client.transitionTaskStatus("mission-2", "in_progress", {
-  validate: false,
-  extra: { note: "Manual override" },
+  progress: 50,
+  message: "Manual override",
 });
 
 // Or if the task fails:
@@ -230,10 +232,10 @@ await client.failTask("mission-2", "Calibration failed", { code: "CAL-01" });
 
 | Method | Description |
 |--------|-------------|
-| `listTasks(limit?, status?, offset?)` | List tasks with optional status filter (default limit: 25) and offset (default: 0) |
+| `listTasks(limit?, offset?, status?)` | List tasks (default limit: 25, offset: 0). `status` is deprecated and ignored for one release. |
 | `getTask(taskId)` | Get task by ID |
 | `deleteTask(taskId)` | Delete a task |
-| `getTasksByEntity(entityId, limit?, status?, offset?)` | Get tasks for an entity with optional offset (default: 0) |
+| `getTasksByEntity(entityId, limit?, offset?)` | Get tasks for an entity with optional offset (default: 0) |
 
 ## Object Operations
 
@@ -297,7 +299,8 @@ console.log(preview.data);
 updateObject(
   objectId: string,
   usageHints?: string[],
-  referencedBy?: Array<{ entity_id?: string; task_id?: string }>
+  referencedBy?: Array<{ entity_id?: string; task_id?: string }>,
+  etag?: string,
 ): Promise<StoredObject>
 ```
 
@@ -312,6 +315,10 @@ await client.updateObject("mission-video", ["final_recording", "approved"], [
 
 ### Object Reference Methods
 
+`addObjectReference` / `removeObjectReference` read `referenced_by`, capture the object `ETag`, then PATCH with `If-Match`. If the server returns `412 Precondition Failed`, the client refetches the object, reapplies the merge/filter locally, and retries once so concurrent writers do not silently overwrite each other.
+
+`removeObjectReference` matches **exactly**: both IDs remove only that pair; entity-only removes only refs with that entity and no `task_id`; task-only removes only refs with that task and no `entity_id`.
+
 | Method | Description |
 |--------|-------------|
 | `addObjectReference(objectId, entityId?, taskId?)` | Add reference to entity/task |
@@ -324,7 +331,7 @@ await client.updateObject("mission-video", ["final_recording", "approved"], [
 
 | Method | Description |
 |--------|-------------|
-| `listObjects(limit?, offset?, contentType?, type?)` | List objects with filters |
+| `listObjects(limit?, offset?, contentType?, type?, validate?)` | List objects. Deprecated positional filter args are ignored for one release. |
 | `getObject(objectId)` | Get object by ID |
 | `viewObject(objectId)` | Fetch viewable object content inline |
 | `deleteObject(objectId)` | Delete an object |
@@ -339,12 +346,28 @@ await client.updateObject("mission-video", ["final_recording", "approved"], [
 Get entities, tasks, and objects modified after a timestamp:
 
 ```ts
-getChangedSince(since: string, limitPerType?: number): Promise<ChangedSinceResponse>
+getChangedSince(
+  since: string,
+  limitPerType?: number,
+  cursors?: QueryStreamCursors,
+): Promise<ChangedSinceResponse>
 ```
+
+If any `has_more_*` flag is true, use the matching `next_*_cursor` from the response as the corresponding field on `QueryStreamCursors` for the next call (same `since`). Only pass cursors for streams that are still truncated—for example, if `has_more_entities` is true, set `entityCursor` from `next_entity_cursor`; omit or leave unset cursors for streams that are not continued.
 
 **Example:**
 ```ts
 const changes = await client.getChangedSince("2025-01-01T00:00:00Z", 50);
+const cursors: QueryStreamCursors = {};
+if (changes.has_more_entities) cursors.entityCursor = changes.next_entity_cursor;
+if (changes.has_more_tasks) cursors.taskCursor = changes.next_task_cursor;
+if (changes.has_more_objects) cursors.objectCursor = changes.next_object_cursor;
+if (changes.has_more_deleted_entities)
+  cursors.deletedEntityCursor = changes.next_deleted_entity_cursor;
+if (changes.has_more_deleted_tasks) cursors.deletedTaskCursor = changes.next_deleted_task_cursor;
+if (changes.has_more_deleted_objects)
+  cursors.deletedObjectCursor = changes.next_deleted_object_cursor;
+const more = await client.getChangedSince("2025-01-01T00:00:00Z", 50, cursors);
 ```
 
 ### Full Dataset
@@ -352,11 +375,7 @@ const changes = await client.getChangedSince("2025-01-01T00:00:00Z", 50);
 Get a snapshot of all data with configurable limits:
 
 ```ts
-getFullDataset(options?: {
-  entityLimit?: number;
-  taskLimit?: number;
-  objectLimit?: number;
-}): Promise<JsonRecord>
+getFullDataset(options?: FullDatasetOptions): Promise<FullDatasetResponse>
 ```
 
 **Example:**
@@ -365,6 +384,10 @@ const snapshot = await client.getFullDataset({
   entityLimit: 100,
   taskLimit: 50,
   objectLimit: 200,
+});
+const page2 = await client.getFullDataset({
+  entityLimit: 100,
+  entityCursor: snapshot.next_entity_cursor,
 });
 ```
 

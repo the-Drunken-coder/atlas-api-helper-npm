@@ -152,38 +152,135 @@ export interface ObjectUpdate {
   extra?: Record<string, unknown>;
 }
 
-// Query interfaces
-export interface ChangedSinceOptions {
+// Query interfaces — keep ChangedSinceResponse / FullDatasetResponse fields aligned with
+// Atlas_Command internal/actions/query_actions.go (FullDatasetResponse, ChangedSinceResponse).
+/** Matches Atlas_Command serializers.EntityResponse (query/full and changed-since). */
+export interface SerializedEntity {
+  entity_id: string;
+  /** Canonical Atlas Command field; prefer this in new code. */
+  entity_type: string;
+  /** Legacy alias retained for wire compatibility; mirrors `entity_type`. */
+  type: string;
+  subtype?: string | null;
+  alias?: string | null;
+  components: Record<string, unknown>;
+  metadata: { created_at?: string; updated_at?: string };
+  extra?: Record<string, unknown>;
+}
+
+/** Matches serializers.TaskResponse. */
+export interface SerializedTask {
+  task_id: string;
+  status: string;
+  entity_id?: string | null;
+  components: Record<string, unknown>;
+  metadata: { created_at?: string; updated_at?: string };
+  extra?: Record<string, unknown>;
+}
+
+/** Matches serializers.ObjectResponse. */
+export interface SerializedObject {
+  object_id: string;
+  path?: string | null;
+  content_type?: string | null;
+  type?: string | null;
+  size_bytes?: number | null;
+  usage_hints: string[];
+  referenced_by?: Array<Record<string, unknown>>;
+  bucket?: string | null;
+  metadata: { created_at?: string; updated_at?: string };
+  payload?: Record<string, unknown>;
+}
+
+/** Tombstone from Atlas Command `changed-since`; use `id` + `type` (not legacy per-field keys). */
+export type DeletedEntityTombstone = { id: string; type: "entity"; deleted_at?: string };
+export type DeletedTaskTombstone = { id: string; type: "task"; deleted_at?: string };
+export type DeletedObjectTombstone = { id: string; type: "object"; deleted_at?: string };
+export type DeletedResource =
+  | DeletedEntityTombstone
+  | DeletedTaskTombstone
+  | DeletedObjectTombstone;
+
+/** @deprecated Prefer DeletedEntityTombstone. `getChangedSince` always injects `entity_id` (= `id`). */
+export type DeletedEntity = DeletedEntityTombstone & { entity_id: string };
+/** @deprecated Prefer DeletedTaskTombstone. `getChangedSince` always injects `task_id` (= `id`). */
+export type DeletedTask = DeletedTaskTombstone & { task_id: string };
+/** @deprecated Prefer DeletedObjectTombstone. `getChangedSince` always injects `object_id` (= `id`). */
+export type DeletedObject = DeletedObjectTombstone & { object_id: string };
+
+/** Opaque continuation tokens from `next_*_cursor` fields — pass back as query parameters for the next request. */
+export interface QueryStreamCursors {
+  entityCursor?: string;
+  taskCursor?: string;
+  objectCursor?: string;
+  deletedEntityCursor?: string;
+  deletedTaskCursor?: string;
+  deletedObjectCursor?: string;
+}
+
+/** Continuation cursors for live entity/task/object streams only. */
+export interface LiveQueryStreamCursors {
+  entityCursor?: string;
+  taskCursor?: string;
+  objectCursor?: string;
+}
+
+/** Options for `getChangedSince` — includes opaque continuation cursors from prior responses. */
+export interface ChangedSinceOptions extends QueryStreamCursors {
   since: string;
   limit_per_type?: number;
 }
 
-export interface DeletedEntity {
-  entity_id: string;
-  deleted_at?: string;
-}
-
-export interface DeletedTask {
-  task_id: string;
-  deleted_at?: string;
-}
-
-export interface DeletedObject {
-  object_id: string;
-  deleted_at?: string;
-}
-
 export interface ChangedSinceResponse {
-  entities?: Entity[];
-  tasks?: Task[];
-  objects?: StoredObject[];
+  entities?: SerializedEntity[];
+  tasks?: SerializedTask[];
+  objects?: SerializedObject[];
   deleted_entities?: DeletedEntity[];
   deleted_tasks?: DeletedTask[];
   deleted_objects?: DeletedObject[];
+  has_more_entities?: boolean;
+  has_more_tasks?: boolean;
+  has_more_objects?: boolean;
+  has_more_deleted_entities?: boolean;
+  has_more_deleted_tasks?: boolean;
+  has_more_deleted_objects?: boolean;
+  /** Present when has_more_entities — use as `entity_cursor` on the next request (same `since`). */
+  next_entity_cursor?: string;
+  next_task_cursor?: string;
+  next_object_cursor?: string;
+  next_deleted_entity_cursor?: string;
+  next_deleted_task_cursor?: string;
+  next_deleted_object_cursor?: string;
+  /** Always set by Atlas Command changed-since handler (RFC3339). */
+  timestamp: string;
 }
 
-export interface FullDatasetOptions {
+export interface FullDatasetOptions extends LiveQueryStreamCursors {
+  entityLimit?: number;
+  taskLimit?: number;
+  objectLimit?: number;
+  /** @deprecated Prefer camelCase `entityLimit` */
   entity_limit?: number;
+  /** @deprecated Prefer `taskLimit` */
   task_limit?: number;
+  /** @deprecated Prefer `objectLimit` */
   object_limit?: number;
+  /** @deprecated Prefer `entityCursor` */
+  entity_cursor?: string;
+  /** @deprecated Prefer `taskCursor` */
+  task_cursor?: string;
+  /** @deprecated Prefer `objectCursor` */
+  object_cursor?: string;
+}
+
+export interface FullDatasetResponse {
+  entities?: SerializedEntity[];
+  tasks?: SerializedTask[];
+  objects?: SerializedObject[];
+  has_more_entities?: boolean;
+  has_more_tasks?: boolean;
+  has_more_objects?: boolean;
+  next_entity_cursor?: string;
+  next_task_cursor?: string;
+  next_object_cursor?: string;
 }

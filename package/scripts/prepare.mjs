@@ -1,23 +1,19 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 
-function hasModule(specifier) {
-  try {
-    require.resolve(specifier);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-if (!hasModule("typescript")) {
-  console.log(
-    "[atlas-api-helper-npm] Skipping build because 'typescript' is not installed. Run `npm install` inside Atlas_Client_SDKs/connection_packages/atlas-api-helper-npm to rebuild when developing this package."
+let tsupCli;
+try {
+  tsupCli = require.resolve("tsup/dist/cli-default.js", { paths: [root] });
+} catch {
+  console.warn(
+    "Skipping atlas-api-helper prepare build because tsup is not installed in this environment."
   );
   process.exit(0);
 }
 
-execSync("npx tsup", { stdio: "inherit" });
-
+execFileSync(process.execPath, [tsupCli], { stdio: "inherit", cwd: root, env: process.env });
